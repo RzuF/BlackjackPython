@@ -3,6 +3,8 @@
 # v1.2
 
 import random
+import socket
+import sys
 
 #---Helpers---#
 
@@ -110,12 +112,13 @@ class Deck(object):
 #---Hand Class START---#
 
 class Hand(object):
-	def __init__(self, name = "Player"):
+	def __init__(self, tcpHandle, name = "Player"):
 		self.cards = []
 		self.points = 0
 		self.special = False
 		self.finished = False
 		self.name = name
+		self.tcpHandle = tcpHandle
 
 	def addCard(self, card):
 		self.cards.append(card)
@@ -155,13 +158,58 @@ class Hand(object):
 
 #---Hand Class END---#
 
+#---Setting up a server---#
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+if len(sys.argv) < 2:
+	serverAddress = ('', 6789)
+	sock.bind(serverAddress)
+
+	print("Starting up on", (sock.getsockname()))
+
+	sock.listen(1)
+
+	game = Deck()
+
+	game.registerPlayer(Hand(None,"AI"), True)
+
+	name = input("Type your name: ")
+	if(name != ''):
+		game.registerPlayer(Hand(None,name))
+	else:
+		game.registerPlayer(Hand(None))
+
+	try:
+		print("Waiting for players (press CTRL-C to start game)")
+		while True:
+			connection, clientAddress = connectionTuple = sock.accept()
+			clientList.append(connectionTuple)
+			try:
+				print("Connected: {0}".format(clientAddress))
+				data = ''
+				while True:
+					buf = connection.recv(16)
+					data += buf.decode("ASCII")
+					if "#end" in data:
+						#TODO add a connection
+						game.registerPlayer(Hand(connectionTuple, data.split("#end")[0]))
+						print(data.split("#end")[0])
+						data = ''
+						break
+					elif buf:
+						pass
+					else:
+						data = ''
+						break
+			finally:
+				pass
+	except KeyboardInterrupt:
+		print("Starting game...")
+
 #---Main Loop START---#
 
-game = Deck()
-
-game.registerPlayer(Hand("AI"), True)
-
-while True:
+while False:
 	name = input("Type name of the player: ")
 	if(name != ''):
 		game.registerPlayer(Hand(name))
@@ -180,5 +228,7 @@ while True:
 		break
 
 game.printWinner()
+
+sock.close()
 
 #---Main Loop END---#
