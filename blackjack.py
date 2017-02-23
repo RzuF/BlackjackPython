@@ -158,6 +158,35 @@ class Hand(object):
 
 #---Hand Class END---#
 
+#---Lan Class START---#
+
+class Lan:
+	def sendData(connection, data):
+		connection.sendall("#start#{}#end".format(data).encode("ASCII"))
+
+	def requestData(connection):
+		data = ''
+		while True:
+			buf = connection.recv(16)
+			data += buf.decode("ASCII")
+			if "#end" in data:
+				#print(data.split("#end")[0])
+				#data = ''
+				break
+			elif buf:
+				pass
+			else:
+				#data = ''
+				break
+
+		return data
+
+	def sendAndRequestData(connection, data):
+		sendData(connection, data)
+		requestData(connection)
+	
+#---Lan Class END---#
+
 #---Setting up a server---#
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
