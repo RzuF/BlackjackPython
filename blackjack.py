@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.4
 # Created by Tomasz Błahut @ 2017
-# v1.2
+# v1.3
 
 import random
 import socket
@@ -58,7 +58,12 @@ class Deck(object):
 	def nextTurn(self):
 		i = 0
 		while True:
-			userAnswer = input(self.players[i].name + " has {0} points: ".format(self.players[i].getPoints()))
+			message = "You have {0} points: ".format(self.players[i].getPoints())
+
+			if self.players[i].tcpHandle == None:
+				userAnswer = input(message)
+			else:
+				userAnswer = Lan.sendAndRequestData(self.players[i].tcpHandle[0], message)
 			if(userAnswer != 's'):
 				self.drawCard(self.players[i])
 			else:
@@ -89,23 +94,33 @@ class Deck(object):
 					winner = [player]
 				elif(player.getPointsInt() == winner[0].getPointsInt()):
 					winner.append(player)
-		print("******")
+		message = "******\n"
 		if(len(winner) > 1):
-			print("Winners({0}): ".format(len(winner)), end = '')
+			message += "Winners({0}): ".format(len(winner))
 			for player in winner:
-				print(player.name, end = ' ')
-			print('')
+				message += player.name
+			message += '\n'
 		else:
 			if(winner[0].getPointsInt() <= 21):
-				print("Winner: ", winner[0].name)
+				message += "Winner: " + winner[0].name + "\n"
 			else:
-				print("There is no winner")
-		print('')
+				message += "There is no winner\n"
+		message += '\n'
 		
-		print("AI: ", self.croupier.getPointsInt())
+		message += "AI: " + str(self.croupier.getPointsInt()) + "\n"
 		for player in self.nonPlayers:
-			print(player.name, ": ", player.getPointsInt())
-		print("******")
+			if player.tcpHandle == None:				
+				message += player.name + "(host): " + str(player.getPointsInt()) + "\n"
+			else:
+				message += player.name + "(" + str(player.tcpHandle[1][0]) + "): " + str(player.getPointsInt()) + "\n"
+		message += "******\n"
+
+		for player in self.nonPlayers:
+			if player.tcpHandle == None:
+				print(message)
+			else:
+				Lan.sendData(player.tcpHandle[0], message + "#gameEnd")
+				player.tcpHandle[0].close()
 
 #---Deck Class END---#
 
@@ -170,20 +185,19 @@ class Lan:
 			buf = connection.recv(16)
 			data += buf.decode("ASCII")
 			if "#end" in data:
-				#print(data.split("#end")[0])
-				#data = ''
 				break
+			elif "#start#" in data:
+				data = data.replace("#start#", "")
 			elif buf:
 				pass
 			else:
-				#data = ''
 				break
 
-		return data
+		return data.replace("#start#", "").replace("#end", "")
 
 	def sendAndRequestData(connection, data):
-		sendData(connection, data)
-		requestData(connection)
+		Lan.sendData(connection, data)
+		return Lan.requestData(connection)
 	
 #---Lan Class END---#
 
@@ -212,29 +226,42 @@ if len(sys.argv) < 2:
 	try:
 		print("Waiting for players (press CTRL-C to start game)")
 		while True:
-			connection, clientAddress = connectionTuple = sock.accept()
-			clientList.append(connectionTuple)
-			try:
-				print("Connected: {0}".format(clientAddress))
-				data = ''
-				while True:
-					buf = connection.recv(16)
-					data += buf.decode("ASCII")
-					if "#end" in data:
-						#TODO add a connection
-						game.registerPlayer(Hand(connectionTuple, data.split("#end")[0]))
-						print(data.split("#end")[0])
-						data = ''
-						break
-					elif buf:
-						pass
-					else:
-						data = ''
-						break
-			finally:
-				pass
+			connectionTuple = sock.accept()
+			connection, clientAddress = connectionTuple
+			print("Connected: {0}".format(clientAddress))
+			data = Lan.requestData(connection)
+			game.registerPlayer(Hand(connectionTuple, data))
+			print("Player {} ({}) joined".format(data, clientAddress[0]))
 	except KeyboardInterrupt:
-		print("Starting game...")
+		print("\nStarting game...")
+
+	game.startGame()
+
+	gameRound = game.nextTurn()
+
+	while True:
+		try:
+			next(gameRound)
+		except (StopIteration):
+			break
+
+	game.printWinner()
+
+else:
+	serverAddress = (sys.argv[1], 6789)
+	sock.connect(serverAddress)
+
+	name = input("Type your name: ")
+	Lan.sendData(sock, name)
+	
+	while True:
+		data = Lan.requestData(sock)
+		if "#gameEnd" in data:
+			print(data.split("#gameEnd")[0])
+			break
+
+		message = input(data)
+		Lan.sendData(sock, message)
 
 #---Main Loop START---#
 
@@ -245,18 +272,6 @@ while False:
 	else:
 		if(len(game.players) != 0):
 			break
-
-game.startGame()
-
-gameRound = game.nextTurn()
-
-while True:
-	try:
-		next(gameRound)
-	except (StopIteration):
-		break
-
-game.printWinner()
 
 sock.close()
 
